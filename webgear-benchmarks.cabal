@@ -2,8 +2,8 @@ cabal-version:       2.4
 name:                webgear-benchmarks
 version:             0.2.1
 description:         Benchmarks for webgear
-homepage:            https://github.com/rkaippully/webgear/webgear-benchmarks#readme
-bug-reports:         https://github.com/rkaippully/webgear/issues
+homepage:            https://github.com/haskell-webgear/webgear-benchmarks#readme
+bug-reports:         https://github.com/haskell-webgear/webgear-benchmarks/issues
 author:              Raghu Kaippully
 maintainer:          rkaippully@gmail.com
 copyright:           2020 Raghu Kaippully
@@ -15,7 +15,7 @@ extra-source-files:  README.md
 
 source-repository head
   type:      git
-  location:  https://github.com/rkaippully/webgear
+  location:  https://github.com/haskell-webgear/webgear-benchmarks
 
 executable bench-users
   default-language:   Haskell2010
