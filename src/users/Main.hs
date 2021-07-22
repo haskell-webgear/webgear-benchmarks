@@ -25,10 +25,10 @@ main :: IO ()
 main = do
   store <- newStore
   getArgs >>= \case
-    ["webgear"]   -> Warp.run 3000 (WebGear.application store)
-    ["servant"]   -> Warp.run 3000 (Servant.application store)
-    ["scotty"]    -> Scotty.application store >>= Warp.run 3000
-    _             -> runCriterion
+    ["webgear"] -> Warp.run 3000 (WebGear.application store)
+    ["servant"] -> Warp.run 3000 (Servant.application store)
+    ["scotty"]  -> Scotty.application store >>= Warp.run 3000
+    _           -> runCriterion
 
 runCriterion :: IO ()
 runCriterion = do
