@@ -1,7 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric  #-}
-{-# LANGUAGE DerivingVia    #-}
-
 module Model where
 
 import Control.Monad.IO.Class (MonadIO (..))
@@ -15,25 +11,25 @@ import GHC.Generics (Generic)
 
 import qualified Data.HashMap.Strict as HM
 
-
 --------------------------------------------------------------------------------
 -- Model for users
 --------------------------------------------------------------------------------
 data User = User
-  { userId       :: UserId
-  , userName     :: Text
-  , dateOfBirth  :: Day
-  , gender       :: Gender
+  { userId :: UserId
+  , userName :: Text
+  , dateOfBirth :: Day
+  , gender :: Gender
   , emailAddress :: Text
   }
-  deriving (Generic, FromJSON, ToJSON)
+  deriving stock (Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 newtype UserId = UserId Int
   deriving (Eq, FromJSON, ToJSON, Hashable) via Int
 
 data Gender = Male | Female | OtherGender
-  deriving (Generic, FromJSON, ToJSON)
-
+  deriving stock (Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 --------------------------------------------------------------------------------
 -- An in-memory store and associated operations for users
