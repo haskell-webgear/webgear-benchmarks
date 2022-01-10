@@ -17,7 +17,7 @@ jobs:
           - ubuntu-latest
           - macos-latest
         ghc:
-          - 8.10.4
+          - 8.10.7
 
     steps:
       - uses: actions/checkout@v2
@@ -41,5 +41,5 @@ jobs:
           rm -rf ~/.stack/setup-exe-src ~/.stack/setup-exe-cache
           stack build --system-ghc --test --bench --no-run-tests --no-run-benchmarks
 
-      - name: Test
-        run: stack test --system-ghc
+      - name: Benchmark
+        run: stack --system-ghc bench --ba "--time-limit 15"

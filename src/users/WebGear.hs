@@ -1,83 +1,110 @@
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveAnyClass             #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DerivingVia                #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE QuasiQuotes                #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE TypeApplications           #-}
 module WebGear where
 
-import Control.Applicative (Alternative (..))
-import Control.Arrow (Kleisli (..))
+import Control.Arrow
 import Control.Monad.Reader (MonadReader (..), ReaderT (..))
-import Data.ByteString.Lazy (ByteString)
 import Model
 import Network.HTTP.Types (StdMethod (..))
+import qualified Network.HTTP.Types as HTTP
 import Network.Wai (Application)
-import WebGear.Middlewares
-import WebGear.Trait
-import WebGear.Types
-
+import WebGear.Server
 
 --------------------------------------------------------------------------------
 -- Routes of the API
 --------------------------------------------------------------------------------
-type IntUserId = PathVar "userId" Int
-
 -- The route handlers run in the App monad
-type App = ReaderT UserStore Router
+type AppM = ReaderT UserStore IO
 
-userRoutes :: Handler App '[] ByteString
-userRoutes = [match| /v1/users/userId:Int |]   -- non-TH version: path @"/v1/users" . pathVar @"userId" @Int
-             $ getUser <|> putUser <|> deleteUser
+type UserIdPathVar = PathVar "userId" Int
 
-getUser :: HasTrait IntUserId req => Handler App req ByteString
-getUser = method @GET
-          $ jsonResponseBody @User
-          $ handler
+allRoutes ::
+  StdHandler
+    h
+    AppM
+    [UserIdPathVar, JSONBody User]
+    [Body Text, RequiredHeader "Content-Type" Text, JSONBody User] =>
+  h (Linked '[] Request) Response
+allRoutes =
+  -- TH version: [route| /v1/users/userId:Int |]
+  path "/v1/users" $
+    pathVar @"userId" @Int $
+      pathEnd $
+        method GET getUser
+          <+> method PUT putUser
+          <+> method DELETE deleteUser
+
+getUser ::
+  forall h req.
+  ( HasTrait UserIdPathVar req
+  , StdHandler h AppM '[] [RequiredHeader "Content-Type" Text, JSONBody User]
+  ) =>
+  h (Linked req Request) Response
+getUser = findUser >>> respond
   where
-    handler :: HasTrait IntUserId req => Handler App req User
-    handler = Kleisli $ \request -> do
-      let uid = pick @IntUserId $ from request
+    findUser :: h (Linked req Request) (Maybe User)
+    findUser = arrM $ \request -> do
+      let uid = pick @UserIdPathVar $ from request
       store <- ask
-      user <- lookupUser store (UserId uid)
-      pure $ maybe notFound404 ok200 user
+      lookupUser store (UserId uid)
 
-putUser :: HasTrait IntUserId req => Handler App req ByteString
-putUser = method @PUT
-          $ requestContentTypeHeader @"application/json"
-          $ jsonRequestBody @User
-          $ jsonResponseBody @User
-          $ handler
+    respond :: h (Maybe User) Response
+    respond = proc maybeUser -> case maybeUser of
+      Nothing -> unlinkA <<< notFound404 -< ()
+      Just u -> unlinkA <<< respondJsonA HTTP.ok200 -< u
+
+putUser ::
+  forall h req.
+  ( HasTrait UserIdPathVar req
+  , StdHandler
+      h
+      AppM
+      '[JSONBody User]
+      [RequiredHeader "Content-Type" Text, JSONBody User, Body Text]
+  ) =>
+  h (Linked req Request) Response
+putUser = jsonRequestBody @User badPayload $ doUpdate >>> respond
   where
-    handler :: HaveTraits [IntUserId, JSONBody User] req => Handler App req User
-    handler = Kleisli $ \request -> do
-      let uid   = pick @IntUserId $ from request
-          user  = pick @(JSONBody User) $ from request
-          user' = user { userId = UserId uid }
+    badPayload :: h (Linked req Request, Text) Response
+    badPayload = proc _ ->
+      unlinkA <<< respondA HTTP.badRequest400 "text/plain" -< "Invalid body payload" :: Text
+
+    doUpdate :: HaveTraits [UserIdPathVar, JSONBody User] ts => h (Linked ts Request) User
+    doUpdate = arrM $ \request -> do
+      let uid = pick @UserIdPathVar $ from request
+          user = pick @(JSONBody User) $ from request
+          user' = user{userId = UserId uid}
       store <- ask
       addUser store user'
-      pure $ ok200 user'
+      pure user'
 
-deleteUser :: HasTrait IntUserId req => Handler App req ByteString
-deleteUser = method @DELETE handler
+    respond :: h User Response
+    respond = proc user ->
+      unlinkA <<< respondJsonA HTTP.ok200 -< user
+
+deleteUser ::
+  forall h req.
+  (HasTrait UserIdPathVar req, StdHandler h AppM '[] '[]) =>
+  h (Linked req Request) Response
+deleteUser = doDelete >>> respond
   where
-    handler :: HasTrait IntUserId req => Handler App req ByteString
-    handler = Kleisli $ \request -> do
-      let uid = pick @IntUserId $ from request
+    doDelete :: h (Linked req Request) Bool
+    doDelete = arrM $ \request -> do
+      let uid = pick @UserIdPathVar $ from request
       store <- ask
-      found <- removeUser store (UserId uid)
-      pure $ if found then noContent204 else notFound404
+      removeUser store (UserId uid)
 
+    respond :: h Bool Response
+    respond = proc removed ->
+      if removed
+        then unlinkA <<< noContent204 -< ()
+        else unlinkA <<< notFound404 -< ()
 
 --------------------------------------------------------------------------------
+
 -- | The application server
+
 --------------------------------------------------------------------------------
 application :: UserStore -> Application
-application store = toApplication $ transform appToRouter userRoutes
+application store = toApplication $ transform appToRouter allRoutes
   where
-    appToRouter :: App a -> Router a
+    appToRouter :: AppM a -> IO a
     appToRouter = flip runReaderT store
